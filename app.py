@@ -1,0 +1,569 @@
+"""
+Schalsteinmauer Betonrechner
+Streamlit Web-Anwendung
+
+Berechnet Betonbedarf für Schalsteinmauern basierend auf FCN-Spezifikationen
+"""
+
+import streamlit as st
+import yaml
+from calculations import (
+    load_config, calculate_all, validate_inputs,
+    get_height_warnings, get_concrete_recommendation, get_disclaimer
+)
+from visualization import (
+    create_2d_view, create_3d_view, create_top_view,
+    should_show_performance_warning
+)
+from pdf_export import create_pdf_report
+
+# Seiten-Konfiguration
+st.set_page_config(
+    page_title="BetonKalk - Betonbedarfsrechner by LEANOFY",
+    page_icon="🧱",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://leanofy.de/impressum',
+        'Report a bug': 'https://leanofy.de/impressum',
+        'About': '''
+        **BetonKalk** - Betonbedarfsrechner für Schalsteinmauern
+        
+        Ein Service von LEANOFY
+        
+        Berechnet präzise den Materialbedarf für Ihre Schalsteinmauer.
+        '''
+    }
+)
+
+# Titel mit Branding
+st.title("🧱 BetonKalk")
+st.markdown("**Betonbedarfsrechner für Schalsteinmauern** | *by LEANOFY*")
+st.caption("Präzise Berechnung basierend auf FCN-Spezifikationen")
+
+# Lade Konfiguration
+config = load_config()
+
+# Sidebar - Eingaben
+st.sidebar.header("⚙️ Eingaben")
+
+# Template-Auswahl (Niedrige Priorität)
+st.sidebar.subheader("Vorlage auswählen (optional)")
+template_options = ["Keine Vorlage"] + [
+    f"{key}: {data['name']}" 
+    for key, data in config['templates'].items()
+]
+selected_template = st.sidebar.selectbox(
+    "Vorlage",
+    template_options,
+    help="Wählen Sie eine Vorlage für schnellen Start"
+)
+
+# Parse Template
+template_data = None
+if selected_template != "Keine Vorlage":
+    template_key = selected_template.split(":")[0]
+    template_data = config['templates'][template_key]
+    st.sidebar.info(f"📋 {template_data['description']}")
+
+# Wand-Dimensionen
+st.sidebar.subheader("🏗️ Mauer-Dimensionen")
+
+if template_data:
+    default_length = template_data['wall_length_m']
+    default_start = template_data['wall_start_height_m']
+    default_end = template_data['wall_end_height_m']
+    default_width = template_data['wall_width_cm']
+else:
+    default_length = config['defaults']['wall_length_m']
+    default_start = config['defaults']['wall_start_height_m']
+    default_end = config['defaults']['wall_end_height_m']
+    default_width = config['defaults']['wall_width_cm']
+
+length = st.sidebar.number_input(
+    "Länge (m)",
+    min_value=0.1,
+    max_value=100.0,
+    value=float(default_length),
+    step=0.5,
+    help="Länge der Mauer in Metern"
+)
+
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    start_height = st.sidebar.number_input(
+        "Anfangshöhe (m)",
+        min_value=0.1,
+        max_value=5.0,
+        value=float(default_start),
+        step=0.1,
+        help="Höhe am Anfang der Mauer"
+    )
+
+with col2:
+    end_height = st.sidebar.number_input(
+        "Endhöhe (m)",
+        min_value=0.1,
+        max_value=5.0,
+        value=float(default_end),
+        step=0.1,
+        help="Höhe am Ende der Mauer (für Gefälle)"
+    )
+
+# Stein-Auswahl
+st.sidebar.subheader("🧱 Schalstein-Typ")
+
+# Finde Default-Stein oder aus Template
+default_stone_key = None
+if template_data:
+    default_stone_key = template_data['stone_type']
+else:
+    for key, stone in config['stone_types'].items():
+        if stone.get('default', False):
+            default_stone_key = key
+            break
+
+# Radio-Buttons für Steintypen
+stone_type_options = {}
+for key, stone in config['stone_types'].items():
+    label = f"{stone['name']}\n" \
+            f"└ {stone['length_cm']} × {stone['width_cm']} × {stone['height_cm']} cm, " \
+            f"{stone['weight_kg']} kg\n" \
+            f"└ Füllvolumen: {stone['fill_volume_per_stone_liters']:.2f} L/Stein"
+    stone_type_options[label] = key
+
+selected_stone_label = st.sidebar.radio(
+    "Schalstein auswählen:",
+    list(stone_type_options.keys()),
+    index=list(stone_type_options.values()).index(default_stone_key),
+    help="Wählen Sie den FCN Schalstein-Typ"
+)
+
+selected_stone_type = stone_type_options[selected_stone_label]
+selected_stone_data = config['stone_types'][selected_stone_type]
+
+# Breite wird automatisch aus Stein übernommen, kann aber überschrieben werden
+st.sidebar.subheader("📏 Wandstärke")
+width = st.sidebar.number_input(
+    "Breite/Dicke (cm)",
+    min_value=10.0,
+    max_value=100.0,
+    value=float(selected_stone_data['width_cm']),
+    step=0.5,
+    help="Wandstärke in cm (Standard: Dicke des gewählten Steins)"
+)
+
+# Kosten (Mittlere Priorität)
+st.sidebar.subheader("💰 Materialpreise")
+enable_costs = st.sidebar.checkbox("Kosten berechnen", value=True)
+
+cement_price = None
+gravel_price = None
+
+if enable_costs:
+    cement_price = st.sidebar.number_input(
+        "Preis Zementsack (25 kg) in €",
+        min_value=0.0,
+        max_value=50.0,
+        value=float(config['prices']['cement_per_bag_eur']),
+        step=0.5
+    )
+    
+    gravel_price = st.sidebar.number_input(
+        "Preis Kies (pro Tonne) in €",
+        min_value=0.0,
+        max_value=200.0,
+        value=float(config['prices']['gravel_per_ton_eur']),
+        step=5.0
+    )
+
+# Berechnung durchführen
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 Neu berechnen", type="primary", use_container_width=True):
+    st.rerun()
+
+# Hauptbereich
+st.markdown("---")
+
+# Berechnung
+result = calculate_all(
+    length=length,
+    start_height=start_height,
+    end_height=end_height,
+    width=width,
+    stone_type=selected_stone_type,
+    cement_price=cement_price,
+    gravel_price=gravel_price
+)
+
+# Fehlerbehandlung (Mittlere Priorität)
+if 'error' in result:
+    st.error(f"❌ **Fehler:** {result['error']}")
+    st.stop()
+
+# Warnungen anzeigen (Mittlere Priorität)
+if result['warnings']:
+    for warning in result['warnings']:
+        st.warning(warning)
+
+# Ergebnisse in Tabs
+tab_overview, tab_viz, tab_materials, tab_export = st.tabs([
+    "📊 Übersicht", "🎨 Visualisierung", "📦 Materialien & Kosten", "📄 Export"
+])
+
+with tab_overview:
+    st.header("Zusammenfassung")
+    
+    # Erste Zeile: Mauer-Daten
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Fläche", f"{result['area']} m²")
+    
+    with col2:
+        st.metric("Anzahl Steine", f"{result['total_stones']} St.")
+    
+    with col3:
+        st.metric("Reihen", f"{result['rows']}")
+    
+    with col4:
+        st.metric("Betonvolumen", f"{result['volume_with_buffer_m3']} m³")
+    
+    # Kosten-Übersicht (falls aktiviert)
+    if enable_costs and result['costs']:
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        
+        costs = result['costs']
+        
+        with col1:
+            st.metric("💶 Zementkosten", f"{costs['cement_cost']:.2f} €")
+        
+        with col2:
+            st.metric("💶 Kieskosten", f"{costs['gravel_cost']:.2f} €")
+        
+        with col3:
+            st.metric("💰 Gesamtkosten", f"{costs['total_cost']:.2f} €", 
+                     help="Materialkosten ohne Wasser")
+    
+    st.markdown("---")
+    
+    # Volumen-Details
+    st.subheader("🧮 Volumenberechnung")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.info(f"**Grundvolumen (Hohlräume):** {result['base_volume_m3']} m³")
+    
+    with col2:
+        st.success(f"**Mit {result['buffer_percentage']}% Puffer:** {result['volume_with_buffer_m3']} m³")
+    
+    st.caption("Der Puffer berücksichtigt Verluste und Verschnitt bei der Verarbeitung.")
+    
+    # Stein-Details
+    st.markdown("---")
+    st.subheader("🧱 Gewählter Schalstein")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write(f"**Name:** {result['stone_data']['name']}")
+        st.write(f"**Maße:** {result['stone_data']['length_cm']} × {result['stone_data']['width_cm']} × {result['stone_data']['height_cm']} cm")
+    
+    with col2:
+        st.write(f"**Gewicht:** {result['stone_data']['weight_kg']} kg")
+        st.write(f"**Bedarf:** {result['stone_data']['stones_per_m2']} St./m²")
+    
+    with col3:
+        st.write(f"**Füllvolumen:** {result['stone_data']['fill_volume_per_stone_liters']:.2f} L/Stein")
+        st.write(f"**Gesamt-Füllvolumen:** {result['stone_data']['fill_volume_per_m2_liters']} L/m²")
+    
+    # Betonempfehlung
+    st.markdown("---")
+    st.subheader("🏗️ Betonempfehlung nach FCN")
+    st.markdown(result['concrete_recommendation'])
+    
+    # Disclaimer
+    st.markdown("---")
+    st.markdown(result['disclaimer'])
+
+with tab_viz:
+    st.header("Visualisierung der Mauer")
+    
+    # Performance-Warnung
+    show_warning, warning_msg = should_show_performance_warning(result['layout'])
+    if show_warning:
+        st.warning(warning_msg)
+    
+    # Tabs für 2D/3D
+    viz_tab_2d, viz_tab_3d, viz_tab_top = st.tabs(["🖼️ 2D Seitenansicht", "🎮 3D Ansicht", "🗺️ Draufsicht"])
+    
+    with viz_tab_2d:
+        st.subheader("Seitenansicht mit versetztem Mauerwerk")
+        fig_2d = create_2d_view(result['layout'], width / 100)
+        st.plotly_chart(fig_2d, use_container_width=True)
+        
+        st.caption(
+            "Die 2D-Ansicht zeigt die Steine in versetzter Anordnung (halbsteinversetzt). "
+            "Ungerade Reihen sind um einen halben Stein versetzt."
+        )
+    
+    with viz_tab_3d:
+        st.subheader("3D-Ansicht (interaktiv)")
+        st.info("💡 Tipp: Ziehen Sie mit der Maus, um die Ansicht zu drehen. Scrollen zum Zoomen.")
+        
+        fig_3d = create_3d_view(result['layout'], width / 100)
+        st.plotly_chart(fig_3d, use_container_width=True)
+        
+        st.caption(
+            "Die 3D-Ansicht zeigt jeden Stein als einzelnen Quader. "
+            "Bei sehr großen Mauern wird die Darstellung aus Performance-Gründen begrenzt."
+        )
+    
+    with viz_tab_top:
+        st.subheader("Draufsicht")
+        fig_top = create_top_view(result['layout'], width / 100)
+        st.plotly_chart(fig_top, use_container_width=True)
+
+with tab_materials:
+    st.header("Materialbedarf")
+    
+    materials = result['materials']
+    
+    # Materialien als Tabelle
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🧱 Zement")
+        st.metric("Benötigte Säcke", f"{materials['cement_bags']} Stück")
+        st.caption(f"à {materials['cement_bag_size_kg']} kg = {materials['cement_kg']} kg gesamt")
+    
+    with col2:
+        st.subheader("🪨 Kies (Rundkies 0-16 mm)")
+        st.metric("Benötigte Menge", f"{materials['gravel_tons']} Tonnen")
+        st.caption(f"= {materials['gravel_kg']} kg")
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("💧 Wasser")
+        st.metric("Benötigte Menge", f"{materials['water_liters']} Liter")
+        st.caption("(vor Ort verfügbar)")
+    
+    with col2:
+        st.subheader("📏 Mischverhältnis")
+        st.write("**Volumenbasis:**")
+        mix = config['concrete_mix']
+        st.write(f"- {mix['cement_parts']} Teil Zement")
+        st.write(f"- {mix['gravel_parts']} Teile Kies")
+        st.write(f"- {mix['water_parts']} Teile Wasser")
+    
+    # Kosten (falls aktiviert)
+    if enable_costs and result['costs']:
+        st.markdown("---")
+        st.header("💰 Kostenschätzung")
+        
+        costs = result['costs']
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Zementkosten", f"{costs['cement_cost']:.2f} €")
+            st.caption(f"{materials['cement_bags']} Säcke × {cement_price:.2f} €")
+        
+        with col2:
+            st.metric("Kieskosten", f"{costs['gravel_cost']:.2f} €")
+            st.caption(f"{materials['gravel_tons']} t × {gravel_price:.2f} €")
+        
+        with col3:
+            st.metric("**Gesamtkosten**", f"{costs['total_cost']:.2f} €", 
+                     help="Zement + Kies (ohne Wasser)")
+        
+        # Einkaufsliste
+        st.markdown("---")
+        st.subheader("🛒 Einkaufsliste")
+        
+        shopping_list = f"""
+**Benötigte Materialien:**
+
+1. **Zement:** {materials['cement_bags']} Säcke à {materials['cement_bag_size_kg']} kg 
+   → Kosten: {costs['cement_cost']:.2f} €
+
+2. **Rundkies (0-16 mm):** {materials['gravel_tons']} Tonnen
+   → Kosten: {costs['gravel_cost']:.2f} €
+
+3. **Wasser:** ca. {materials['water_liters']} Liter (vor Ort)
+
+**Gesamtkosten:** {costs['total_cost']:.2f} €
+
+**Hinweis:** Preise verstehen sich als Schätzung ohne Lieferkosten.
+        """
+        
+        st.markdown(shopping_list)
+        
+        # Download als Text
+        st.download_button(
+            label="📥 Einkaufsliste herunterladen",
+            data=shopping_list,
+            file_name="einkaufsliste_schalsteinmauer.txt",
+            mime="text/plain"
+        )
+
+with tab_export:
+    st.header("📄 Export & Dokumentation")
+    
+    st.subheader("PDF-Export")
+    
+    # PDF-Export-Button
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.write("Exportieren Sie alle Berechnungen als professionelles PDF-Dokument.")
+        st.write("**Enthält:** Eingaben, Steinauswahl, Berechnungen, Materialien, Kosten, Empfehlungen")
+    
+    with col2:
+        if st.button("📥 PDF erstellen", type="primary", use_container_width=True):
+            with st.spinner("PDF wird erstellt..."):
+                try:
+                    # Erstelle 2D Figure für PDF
+                    fig_2d_for_pdf = create_2d_view(result['layout'], width / 100)
+                    
+                    # Eingabedaten
+                    inputs = {
+                        'length': length,
+                        'start_height': start_height,
+                        'end_height': end_height,
+                        'width': width
+                    }
+                    
+                    # Generiere PDF
+                    pdf_buffer = create_pdf_report(result, inputs, fig_2d_for_pdf)
+                    
+                    # Download-Button
+                    st.download_button(
+                        label="📄 PDF herunterladen",
+                        data=pdf_buffer,
+                        file_name="schalsteinmauer_berechnung.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                    st.success("✅ PDF erfolgreich erstellt!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Fehler beim Erstellen des PDFs: {str(e)}")
+                    st.info("💡 Tipp: Für PDF-Export mit Bildern wird 'kaleido' benötigt: `pip install kaleido`")
+    
+    # Workaround: Daten als Text exportieren
+    st.markdown("---")
+    st.subheader("Daten als Text exportieren")
+    
+    export_text = f"""
+SCHALSTEINMAUER BETONRECHNER - ERGEBNISSE
+==========================================
+
+MAUER-DIMENSIONEN:
+- Länge: {length} m
+- Anfangshöhe: {start_height} m
+- Endhöhe: {end_height} m
+- Breite/Dicke: {width} cm
+
+SCHALSTEIN:
+- Typ: {result['stone_data']['name']}
+- Maße: {result['stone_data']['length_cm']} × {result['stone_data']['width_cm']} × {result['stone_data']['height_cm']} cm
+- Gewicht: {result['stone_data']['weight_kg']} kg
+- Füllvolumen: {result['stone_data']['fill_volume_per_stone_liters']:.2f} L/Stein
+
+BERECHNUNGSERGEBNISSE:
+- Fläche: {result['area']} m²
+- Anzahl Steine: {result['total_stones']} St.
+- Reihen: {result['rows']}
+- Grundvolumen: {result['base_volume_m3']} m³
+- Volumen mit {result['buffer_percentage']}% Puffer: {result['volume_with_buffer_m3']} m³
+
+MATERIALBEDARF:
+- Zement: {materials['cement_bags']} Säcke à {materials['cement_bag_size_kg']} kg ({materials['cement_kg']} kg)
+- Kies: {materials['gravel_tons']} Tonnen ({materials['gravel_kg']} kg)
+- Wasser: {materials['water_liters']} Liter
+"""
+    
+    if enable_costs and result['costs']:
+        export_text += f"""
+KOSTEN:
+- Zement: {costs['cement_cost']:.2f} €
+- Kies: {costs['gravel_cost']:.2f} €
+- Gesamt: {costs['total_cost']:.2f} €
+"""
+    
+    export_text += f"""
+BETONEMPFEHLUNG:
+Empfohlener Beton: C25/30 mit max. 16 mm Korn (Rundkies 0-16), F3-Konsistenz.
+Für Höhen >1 m oder tragende Wände Armierung empfohlen (z.B. 2 Ø 8 mm pro Lage).
+
+WICHTIGER HINWEIS:
+Dies ist eine Schätzung und berücksichtigt Verluste, aber keine statische Berechnung 
+oder spezifische Bauvorschriften. Konsultieren Sie einen Fachmann für tragende oder hohe Mauern!
+
+Erstellt mit: Schalsteinmauer Betonrechner
+"""
+    
+    st.download_button(
+        label="📥 Ergebnisse als Text herunterladen",
+        data=export_text,
+        file_name="schalsteinmauer_berechnung.txt",
+        mime="text/plain",
+        use_container_width=True
+    )
+
+# Footer
+st.markdown("---")
+
+# Impressum und rechtliche Hinweise
+col1, col2, col3 = st.columns([2, 1, 1])
+
+with col1:
+    st.caption("**BetonKalk** - Betonbedarfsrechner für Schalsteinmauern")
+    st.caption("Ein Service von **LEANOFY** | © 2025")
+
+with col2:
+    st.markdown("[📄 Impressum](https://leanofy.de/impressum)")
+
+with col3:
+    st.markdown("[ℹ️ Datenschutz](https://leanofy.de/datenschutz)")
+
+# Erweiterter Disclaimer
+with st.expander("⚖️ Rechtliche Hinweise & Haftungsausschluss"):
+    st.markdown("""
+    **Betreiber:** LEANOFY
+    
+    **Haftungsausschluss:**
+    
+    Diese Anwendung dient ausschließlich zu Informations- und Planungszwecken. Die Nutzung erfolgt 
+    auf eigene Verantwortung und ist vollständig unverbindlich.
+    
+    **Keine Gewährleistung:**
+    - Die Berechnungen basieren auf Standardannahmen und FCN-Spezifikationen
+    - Wir übernehmen keine Haftung für die Richtigkeit, Vollständigkeit oder Aktualität der Angaben
+    - Die Ergebnisse ersetzen KEINE fachliche Beratung oder statische Berechnung
+    - Abweichungen durch lokale Gegebenheiten, Material-Chargen oder Verarbeitung sind möglich
+    
+    **Keine Assoziation:**
+    - LEANOFY ist nicht assoziiert mit oder autorisiert durch FCN (Fels-Werke)
+    - FCN-Spezifikationen werden als öffentlich verfügbare Referenzwerte verwendet
+    - Alle Markennamen und Produktbezeichnungen sind Eigentum ihrer jeweiligen Inhaber
+    
+    **Haftung:**
+    - Jegliche Haftung für Schäden, die durch die Nutzung dieser Anwendung entstehen, wird ausgeschlossen
+    - Für Bau- und Statikfragen konsultieren Sie bitte einen zugelassenen Fachmann
+    - LEANOFY übernimmt keine Verantwortung für Materialbestellungen oder Bauausführungen basierend auf diesen Berechnungen
+    
+    **Nutzungsbedingungen:**
+    - Die Nutzung dieser Anwendung ist kostenlos und unverbindlich
+    - Durch die Nutzung akzeptieren Sie diese Bedingungen
+    - Wir behalten uns das Recht vor, die Anwendung jederzeit zu ändern oder einzustellen
+    
+    **Kontakt:** Für Fragen wenden Sie sich bitte an LEANOFY über das [Impressum](https://leanofy.de/impressum)
+    """)
+
+

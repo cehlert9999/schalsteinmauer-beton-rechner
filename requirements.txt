@@ -1,0 +1,22 @@
+# Schalsteinmauer Betonrechner - Dependencies
+
+# Core Framework
+streamlit>=1.30.0
+
+# Visualisierung
+plotly>=5.18.0
+
+# Konfiguration
+pyyaml>=6.0
+
+# PDF-Export
+reportlab>=4.0.0
+kaleido>=0.2.1  # Für Plotly-Bild-Export in PDFs (optional, aber empfohlen)
+
+# Testing
+pytest>=7.4.0
+
+# Numerical Operations (wird von Plotly benötigt)
+numpy>=1.24.0
+
+

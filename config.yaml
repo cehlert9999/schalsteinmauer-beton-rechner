@@ -1,0 +1,94 @@
+stone_types:
+  abmessung_1:
+    name: Standard (36,0 x 36,5 x 24,8 cm)
+    length_cm: 36.0
+    width_cm: 36.5
+    height_cm: 24.8
+    weight_kg: 25.0
+    stones_per_m2: 11
+    fill_volume_per_m2_liters: 230
+    fill_volume_per_stone_liters: 20.91
+    default: true
+  abmessung_2:
+    name: Schmal (36,0 x 30,0 x 24,8 cm)
+    length_cm: 36.0
+    width_cm: 30.0
+    height_cm: 24.8
+    weight_kg: 23.5
+    stones_per_m2: 11
+    fill_volume_per_m2_liters: 171
+    fill_volume_per_stone_liters: 15.55
+    default: false
+  abmessung_3:
+    name: Extra schmal (36,0 x 24,0 x 24,8 cm)
+    length_cm: 36.0
+    width_cm: 24.0
+    height_cm: 24.8
+    weight_kg: 22.0
+    stones_per_m2: 11
+    fill_volume_per_m2_liters: 133
+    fill_volume_per_stone_liters: 12.09
+    default: false
+  abmessung_4:
+    name: Lang (50,0 x 17,5 x 24,8 cm)
+    length_cm: 50.0
+    width_cm: 17.5
+    height_cm: 24.8
+    weight_kg: 22.5
+    stones_per_m2: 8
+    fill_volume_per_m2_liters: 88
+    fill_volume_per_stone_liters: 11.0
+    default: false
+defaults:
+  wall_length_m: 5.0
+  wall_start_height_m: 1.0
+  wall_end_height_m: 1.0
+  wall_width_cm: 36.5
+concrete_mix:
+  cement_parts: 1
+  gravel_parts: 4
+  water_parts: 0.5
+  cement_kg_per_m3: 300
+  gravel_kg_per_m3: 1200
+  water_liters_per_m3: 150
+  cement_bag_size_kg: 25
+buffer:
+  percentage: 15
+prices:
+  cement_per_bag_eur: 5.0
+  gravel_per_ton_eur: 34.0
+concrete_recommendation:
+  quality: C25/30
+  max_grain_size_mm: 16
+  consistency: F3
+  reinforcement_note: Für Höhen >1 m oder tragende Wände Armierung empfohlen (z.B.
+    2 Ø 8 mm pro Lage)
+warnings:
+  max_height_freestanding_m: 2.0
+  max_height_backfilled_m: 1.3
+  min_width_cm: 10.0
+templates:
+  gerade_gartenmauer:
+    name: Gerade Gartenmauer
+    description: Typische gerade Mauer ohne Gefälle
+    wall_length_m: 10.0
+    wall_start_height_m: 1.5
+    wall_end_height_m: 1.5
+    wall_width_cm: 36.5
+    stone_type: abmessung_1
+  niedrige_mauer:
+    name: Niedrige Mauer
+    description: Kleine Abgrenzung oder Hochbeet
+    wall_length_m: 5.0
+    wall_start_height_m: 0.5
+    wall_end_height_m: 0.5
+    wall_width_cm: 36.5
+    stone_type: abmessung_1
+  hangbefestigung:
+    name: Hangbefestigung mit Gefälle
+    description: Mauer mit Höhenunterschied
+    wall_length_m: 8.0
+    wall_start_height_m: 2.0
+    wall_end_height_m: 1.0
+    wall_width_cm: 36.5
+    stone_type: abmessung_1
