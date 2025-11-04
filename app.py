@@ -66,6 +66,43 @@ if selected_template != "Keine Vorlage":
     template_data = config['templates'][template_key]
     st.sidebar.info(f"📋 {template_data['description']}")
 
+# Stein-Auswahl ZUERST (für diskrete Höhenschritte)
+st.sidebar.subheader("🧱 Schalstein-Typ")
+
+# Finde Default-Stein oder aus Template
+default_stone_key = None
+if template_data:
+    default_stone_key = template_data['stone_type']
+else:
+    for key, stone in config['stone_types'].items():
+        if stone.get('default', False):
+            default_stone_key = key
+            break
+
+# Radio-Buttons für Steintypen
+stone_type_options = {}
+for key, stone in config['stone_types'].items():
+    label = f"{stone['name']}\n" \
+            f"└ {stone['length_cm']} × {stone['width_cm']} × {stone['height_cm']} cm, " \
+            f"{stone['weight_kg']} kg\n" \
+            f"└ Füllvolumen: {stone['fill_volume_per_stone_liters']:.2f} L/Stein"
+    stone_type_options[label] = key
+
+selected_stone_label = st.sidebar.radio(
+    "Schalstein auswählen:",
+    list(stone_type_options.keys()),
+    index=list(stone_type_options.values()).index(default_stone_key),
+    help="Wählen Sie den FCN Schalstein-Typ"
+)
+
+selected_stone_type = stone_type_options[selected_stone_label]
+selected_stone_data = config['stone_types'][selected_stone_type]
+
+# Steinhöhe für diskrete Schritte
+stone_height_m = selected_stone_data['height_cm'] / 100  # z.B. 0.248 m
+
+st.sidebar.markdown("---")
+
 # Wand-Dimensionen
 st.sidebar.subheader("🏗️ Mauer-Dimensionen")
 
@@ -102,22 +139,30 @@ if wall_type == "Einfach (durchgehend)":
     with col1:
         start_height = st.sidebar.number_input(
             "Anfangshöhe (m)",
-            min_value=0.1,
+            min_value=stone_height_m,
             max_value=5.0,
-            value=float(default_start),
-            step=0.1,
-            help="Höhe am Anfang der Mauer"
+            value=round(float(default_start) / stone_height_m) * stone_height_m,
+            step=stone_height_m,
+            format="%.3f",
+            help=f"Höhe in Steinreihen (1 Reihe = {stone_height_m:.3f} m)"
         )
+        # Zeige Anzahl Reihen
+        rows_start = int(round(start_height / stone_height_m))
+        st.sidebar.caption(f"≈ {rows_start} Reihen")
     
     with col2:
         end_height = st.sidebar.number_input(
             "Endhöhe (m)",
-            min_value=0.1,
+            min_value=stone_height_m,
             max_value=5.0,
-            value=float(default_end),
-            step=0.1,
-            help="Höhe am Ende der Mauer (für Gefälle)"
+            value=round(float(default_end) / stone_height_m) * stone_height_m,
+            step=stone_height_m,
+            format="%.3f",
+            help=f"Höhe in Steinreihen (1 Reihe = {stone_height_m:.3f} m)"
         )
+        # Zeige Anzahl Reihen
+        rows_end = int(round(end_height / stone_height_m))
+        st.sidebar.caption(f"≈ {rows_end} Reihen")
     
     # Flags für Berechnung
     is_two_zone = False
@@ -142,12 +187,15 @@ else:
     
     zone1_height = st.sidebar.number_input(
         "Höhe Zone 1 (m)",
-        min_value=0.1,
+        min_value=stone_height_m,
         max_value=5.0,
-        value=float(default_start),
-        step=0.1,
-        help="Konstante Höhe im flachen Bereich"
+        value=round(float(default_start) / stone_height_m) * stone_height_m,
+        step=stone_height_m,
+        format="%.3f",
+        help=f"Konstante Höhe (1 Reihe = {stone_height_m:.3f} m)"
     )
+    rows_z1 = int(round(zone1_height / stone_height_m))
+    st.sidebar.caption(f"≈ {rows_z1} Reihen")
     
     st.sidebar.markdown("**📐 Zone 2 (Variabler Bereich)**")
     
@@ -160,16 +208,19 @@ else:
         help="Länge des ansteigenden/abfallenden Bereichs"
     )
     
-    st.sidebar.info(f"💡 Zone 2 startet bei {zone1_height:.2f} m (Endhöhe Zone 1)")
+    st.sidebar.info(f"💡 Zone 2 startet bei {zone1_height:.3f} m ({rows_z1} Reihen)")
     
     zone2_end_height = st.sidebar.number_input(
         "Endhöhe Zone 2 (m)",
-        min_value=0.1,
+        min_value=stone_height_m,
         max_value=5.0,
-        value=float(default_end),
-        step=0.1,
-        help="Höhe am Ende von Zone 2"
+        value=round(float(default_end) / stone_height_m) * stone_height_m,
+        step=stone_height_m,
+        format="%.3f",
+        help=f"Höhe am Ende (1 Reihe = {stone_height_m:.3f} m)"
     )
+    rows_z2 = int(round(zone2_end_height / stone_height_m))
+    st.sidebar.caption(f"≈ {rows_z2} Reihen")
     
     # Visuelle Hilfe
     total_length_zones = zone1_length + zone2_length
@@ -197,38 +248,8 @@ else:
     is_two_zone = True
 
 # Stein-Auswahl
-st.sidebar.subheader("🧱 Schalstein-Typ")
-
-# Finde Default-Stein oder aus Template
-default_stone_key = None
-if template_data:
-    default_stone_key = template_data['stone_type']
-else:
-    for key, stone in config['stone_types'].items():
-        if stone.get('default', False):
-            default_stone_key = key
-            break
-
-# Radio-Buttons für Steintypen
-stone_type_options = {}
-for key, stone in config['stone_types'].items():
-    label = f"{stone['name']}\n" \
-            f"└ {stone['length_cm']} × {stone['width_cm']} × {stone['height_cm']} cm, " \
-            f"{stone['weight_kg']} kg\n" \
-            f"└ Füllvolumen: {stone['fill_volume_per_stone_liters']:.2f} L/Stein"
-    stone_type_options[label] = key
-
-selected_stone_label = st.sidebar.radio(
-    "Schalstein auswählen:",
-    list(stone_type_options.keys()),
-    index=list(stone_type_options.values()).index(default_stone_key),
-    help="Wählen Sie den FCN Schalstein-Typ"
-)
-
-selected_stone_type = stone_type_options[selected_stone_label]
-selected_stone_data = config['stone_types'][selected_stone_type]
-
 # Breite wird automatisch aus Stein übernommen, kann aber überschrieben werden
+st.sidebar.markdown("---")
 st.sidebar.subheader("📏 Wandstärke")
 width = st.sidebar.number_input(
     "Breite/Dicke (cm)",
