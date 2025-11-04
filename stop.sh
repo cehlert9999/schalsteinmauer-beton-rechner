@@ -36,3 +36,4 @@ echo ""
 echo "[FERTIG] Server gestoppt."
 echo ""
 
+

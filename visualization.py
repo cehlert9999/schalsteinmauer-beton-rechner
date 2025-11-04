@@ -11,6 +11,7 @@ import numpy as np
 def create_2d_view(layout: Dict, stone_width_m: float) -> go.Figure:
     """
     Erstellt eine 2D-Ansicht der Mauer (Seitenansicht mit versetztem Mauerwerk)
+    Unterstützt sowohl einfache als auch 2-Zonen-Mauern
     
     Args:
         layout: Layout-Dictionary von get_stone_layout()
@@ -21,14 +22,43 @@ def create_2d_view(layout: Dict, stone_width_m: float) -> go.Figure:
     """
     stone_length = layout['stone_length_m']
     stone_height = layout['stone_height_m']
-    stones_per_row = layout['stones_per_row']
-    rows_start = layout['rows_start']
-    rows_end = layout['rows_end']
     total_length = layout['total_length']
     
-    # Berechne Gefälle pro Meter
-    height_diff = layout['start_height'] - layout['end_height']
-    slope = height_diff / total_length if total_length > 0 else 0
+    # Prüfe ob 2-Zonen-Mauer
+    is_two_zone = layout.get('is_two_zone', False)
+    
+    if is_two_zone:
+        # 2-Zonen-Logik
+        zone1_length = layout['zone1_length']
+        zone1_height = layout['zone1_height']
+        zone2_length = layout['zone2_length']
+        zone2_start_height = layout['zone2_start_height']
+        zone2_end_height = layout['zone2_end_height']
+        
+        # Zone 1: Kein Gefälle
+        zone1_slope = 0
+        
+        # Zone 2: Gefälle
+        zone2_height_diff = zone2_start_height - zone2_end_height
+        zone2_slope = zone2_height_diff / zone2_length if zone2_length > 0 else 0
+        
+        rows_start = layout['rows_start']
+        rows_end = layout['rows_end']
+        stones_per_row = layout['stones_per_row']
+    else:
+        # Standard-Logik (einfache Mauer)
+        stones_per_row = layout['stones_per_row']
+        rows_start = layout['rows_start']
+        rows_end = layout['rows_end']
+        
+        # Berechne Gefälle pro Meter
+        height_diff = layout['start_height'] - layout['end_height']
+        slope = height_diff / total_length if total_length > 0 else 0
+        
+        is_two_zone = False
+        zone1_length = 0
+        zone1_slope = 0
+        zone2_slope = 0
     
     # Erstelle Rechtecke für jeden Stein
     shapes = []
@@ -62,7 +92,22 @@ def create_2d_view(layout: Dict, stone_width_m: float) -> go.Figure:
             
             # Berechne Höhe an dieser Position
             x_mid = (x_start + x_end) / 2
-            max_height_at_position = layout['start_height'] - slope * x_mid
+            
+            if is_two_zone:
+                # Prüfe in welcher Zone wir sind
+                if x_mid <= zone1_length:
+                    # Zone 1: Flach
+                    max_height_at_position = zone1_height
+                    fillcolor = 'lightgray'
+                else:
+                    # Zone 2: Mit Gefälle
+                    x_in_zone2 = x_mid - zone1_length
+                    max_height_at_position = zone2_start_height - zone2_slope * x_in_zone2
+                    fillcolor = 'lightblue'
+            else:
+                # Standard: Durchgehendes Gefälle
+                max_height_at_position = layout['start_height'] - slope * x_mid
+                fillcolor = 'lightgray'
             
             # Prüfe ob diese Reihe an dieser Position existiert
             if current_height_at_start >= max_height_at_position:
@@ -79,11 +124,26 @@ def create_2d_view(layout: Dict, stone_width_m: float) -> go.Figure:
                 'x1': x_end,
                 'y1': y_top,
                 'line': {'color': 'black', 'width': 1},
-                'fillcolor': 'lightgray',
+                'fillcolor': fillcolor,
                 'opacity': 0.8
             })
             
             stone_count += 1
+    
+    # Füge Trennlinie zwischen Zonen hinzu (falls 2-Zonen)
+    if is_two_zone:
+        shapes.append({
+            'type': 'line',
+            'x0': zone1_length,
+            'y0': 0,
+            'x1': zone1_length,
+            'y1': max(layout['start_height'], layout['end_height']),
+            'line': {
+                'color': 'red',
+                'width': 2,
+                'dash': 'dash'
+            }
+        })
     
     # Erstelle Figure
     fig = go.Figure()
@@ -98,9 +158,30 @@ def create_2d_view(layout: Dict, stone_width_m: float) -> go.Figure:
         hoverinfo='skip'
     ))
     
+    # Annotation für Zonen (falls 2-Zonen)
+    annotations = []
+    if is_two_zone:
+        annotations = [
+            dict(
+                x=zone1_length / 2,
+                y=max(layout['start_height'], layout['end_height']) * 0.95,
+                text="Zone 1 (Flach)",
+                showarrow=False,
+                font=dict(size=12, color="gray")
+            ),
+            dict(
+                x=zone1_length + zone2_length / 2,
+                y=max(layout['start_height'], layout['end_height']) * 0.95,
+                text="Zone 2 (Variabel)",
+                showarrow=False,
+                font=dict(size=12, color="blue")
+            )
+        ]
+    
     # Füge Shapes hinzu
     fig.update_layout(
         shapes=shapes,
+        annotations=annotations,
         title={
             'text': f'Seitenansicht der Mauer (versetztes Mauerwerk)<br><sub>ca. {stone_count} Steine sichtbar</sub>',
             'x': 0.5,
@@ -132,6 +213,7 @@ def create_2d_view(layout: Dict, stone_width_m: float) -> go.Figure:
 def create_3d_view(layout: Dict, stone_width_m: float) -> go.Figure:
     """
     Erstellt eine 3D-Ansicht der Mauer mit einzelnen Steinen als Quader
+    Unterstützt sowohl einfache als auch 2-Zonen-Mauern
     
     Args:
         layout: Layout-Dictionary von get_stone_layout()
@@ -143,14 +225,33 @@ def create_3d_view(layout: Dict, stone_width_m: float) -> go.Figure:
     stone_length = layout['stone_length_m']
     stone_height = layout['stone_height_m']
     stone_width = stone_width_m
-    stones_per_row = layout['stones_per_row']
-    rows_start = layout['rows_start']
-    rows_end = layout['rows_end']
     total_length = layout['total_length']
     
-    # Berechne Gefälle
-    height_diff = layout['start_height'] - layout['end_height']
-    slope = height_diff / total_length if total_length > 0 else 0
+    # Prüfe ob 2-Zonen-Mauer
+    is_two_zone = layout.get('is_two_zone', False)
+    
+    if is_two_zone:
+        zone1_length = layout['zone1_length']
+        zone1_height = layout['zone1_height']
+        zone2_length = layout['zone2_length']
+        zone2_start_height = layout['zone2_start_height']
+        zone2_end_height = layout['zone2_end_height']
+        zone2_height_diff = zone2_start_height - zone2_end_height
+        zone2_slope = zone2_height_diff / zone2_length if zone2_length > 0 else 0
+        
+        rows_start = layout['rows_start']
+        rows_end = layout['rows_end']
+        stones_per_row = layout['stones_per_row']
+    else:
+        # Berechne Gefälle
+        height_diff = layout['start_height'] - layout['end_height']
+        slope = height_diff / total_length if total_length > 0 else 0
+        
+        stones_per_row = layout['stones_per_row']
+        rows_start = layout['rows_start']
+        rows_end = layout['rows_end']
+        
+        zone1_length = 0
     
     # Performance-Warnung
     max_stones = max(rows_start, rows_end) * (stones_per_row + 1)
@@ -189,7 +290,15 @@ def create_3d_view(layout: Dict, stone_width_m: float) -> go.Figure:
             
             # Höhe an dieser Position
             x_mid = (x_start + x_end) / 2
-            max_height_at_position = layout['start_height'] - slope * x_mid
+            
+            if is_two_zone:
+                if x_mid <= zone1_length:
+                    max_height_at_position = zone1_height
+                else:
+                    x_in_zone2 = x_mid - zone1_length
+                    max_height_at_position = zone2_start_height - zone2_slope * x_in_zone2
+            else:
+                max_height_at_position = layout['start_height'] - slope * x_mid
             
             if current_height >= max_height_at_position:
                 continue
@@ -372,5 +481,6 @@ def should_show_performance_warning(layout: Dict) -> Tuple[bool, str]:
         )
     
     return False, ""
+
 
 

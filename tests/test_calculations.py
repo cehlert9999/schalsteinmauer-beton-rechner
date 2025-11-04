@@ -18,7 +18,8 @@ from calculations import (
     validate_inputs,
     get_height_warnings,
     get_stone_layout,
-    calculate_all
+    calculate_all,
+    calculate_two_zone_wall
 )
 
 
@@ -418,7 +419,112 @@ class TestCalculateAll:
         assert result['error'] is not None
 
 
+class TestTwoZoneWall:
+    """Tests für 2-Zonen-Mauer"""
+    
+    def test_two_zone_flat_and_rising(self):
+        """Test für flache Zone + ansteigende Zone"""
+        area, total_stones, rows, _, zone_breakdown = calculate_two_zone_wall(
+            zone1_length=5.0,
+            zone1_height=1.0,
+            zone2_length=5.0,
+            zone2_end_height=2.0,
+            stone_type="abmessung_1"
+        )
+        
+        # Zone 1: 5m × 1m = 5 m²
+        assert zone_breakdown['zone1']['area'] == 5.0
+        assert zone_breakdown['zone1']['stones'] == 55  # 5 m² * 11 St./m²
+        
+        # Zone 2: 5m × 1.5m (Durchschnitt) = 7.5 m²
+        assert zone_breakdown['zone2']['area'] == 7.5
+        assert zone_breakdown['zone2']['avg_height'] == 1.5
+        
+        # Gesamt: 5 + 7.5 = 12.5 m²
+        assert area == 12.5
+    
+    def test_two_zone_flat_and_falling(self):
+        """Test für flache Zone + abfallende Zone"""
+        area, total_stones, rows, _, zone_breakdown = calculate_two_zone_wall(
+            zone1_length=3.0,
+            zone1_height=2.0,
+            zone2_length=2.0,
+            zone2_end_height=1.0,
+            stone_type="abmessung_1"
+        )
+        
+        # Zone 1: 3m × 2m = 6 m²
+        assert zone_breakdown['zone1']['area'] == 6.0
+        
+        # Zone 2: 2m × 1.5m (Durchschnitt von 2m und 1m) = 3 m²
+        assert zone_breakdown['zone2']['area'] == 3.0
+        
+        # Gesamt
+        assert area == 9.0
+    
+    def test_two_zone_equal_heights(self):
+        """Test wenn beide Zonen gleiche Höhe haben"""
+        area, total_stones, rows, _, zone_breakdown = calculate_two_zone_wall(
+            zone1_length=4.0,
+            zone1_height=1.5,
+            zone2_length=4.0,
+            zone2_end_height=1.5,
+            stone_type="abmessung_1"
+        )
+        
+        # Beide Zonen: 4m × 1.5m = 6 m²
+        assert zone_breakdown['zone1']['area'] == 6.0
+        assert zone_breakdown['zone2']['area'] == 6.0
+        
+        # Durchschnittshöhe Zone 2
+        assert zone_breakdown['zone2']['avg_height'] == 1.5
+    
+    def test_calculate_all_with_two_zones(self):
+        """Test calculate_all() mit 2-Zonen-Parameter"""
+        result = calculate_all(
+            length=10.0,  # Gesamt
+            start_height=1.0,
+            end_height=2.0,
+            width=36.5,
+            stone_type="abmessung_1",
+            is_two_zone=True,
+            zone1_length=5.0,
+            zone1_height=1.0,
+            zone2_length=5.0,
+            zone2_end_height=2.0
+        )
+        
+        assert result['valid'] is True
+        assert result['is_two_zone'] is True
+        assert 'zone_breakdown' in result
+        assert result['zone_breakdown']['zone1']['length'] == 5.0
+        assert result['zone_breakdown']['zone2']['length'] == 5.0
+    
+    def test_two_zone_layout_info(self):
+        """Test dass Layout-Info für 2-Zonen korrekt ist"""
+        result = calculate_all(
+            length=8.0,
+            start_height=1.3,
+            end_height=3.3,
+            width=36.5,
+            stone_type="abmessung_1",
+            is_two_zone=True,
+            zone1_length=3.5,
+            zone1_height=1.3,
+            zone2_length=4.5,
+            zone2_end_height=3.3
+        )
+        
+        layout = result['layout']
+        assert layout['is_two_zone'] is True
+        assert layout['zone1_length'] == 3.5
+        assert layout['zone2_length'] == 4.5
+        assert layout['zone1_height'] == 1.3
+        assert layout['zone2_end_height'] == 3.3
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
 
 

@@ -19,7 +19,7 @@ from pdf_export import create_pdf_report
 
 # Seiten-Konfiguration
 st.set_page_config(
-    page_title="BetonKalk - Betonbedarfsrechner by LEANOFY",
+    page_title="MauerPlaner - Betonbedarfsrechner by LEANOFY",
     page_icon="🧱",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -27,7 +27,7 @@ st.set_page_config(
         'Get Help': 'https://leanofy.de/impressum',
         'Report a bug': 'https://leanofy.de/impressum',
         'About': '''
-        **BetonKalk** - Betonbedarfsrechner für Schalsteinmauern
+        **MauerPlaner** - Betonbedarfsrechner für Schalsteinmauern
         
         Ein Service von LEANOFY
         
@@ -37,7 +37,7 @@ st.set_page_config(
 )
 
 # Titel mit Branding
-st.title("🧱 BetonKalk")
+st.title("🧱 MauerPlaner")
 st.markdown("**Betonbedarfsrechner für Schalsteinmauern** | *by LEANOFY*")
 st.caption("Präzise Berechnung basierend auf FCN-Spezifikationen")
 
@@ -69,6 +69,13 @@ if selected_template != "Keine Vorlage":
 # Wand-Dimensionen
 st.sidebar.subheader("🏗️ Mauer-Dimensionen")
 
+# Mauer-Typ Auswahl
+wall_type = st.sidebar.radio(
+    "Mauer-Typ",
+    ["Einfach (durchgehend)", "Zweizonen (flach + variabel)"],
+    help="Einfach: Gleichmäßige Mauer. Zweizonen: Flacher Bereich + ansteigender/abfallender Bereich"
+)
+
 if template_data:
     default_length = template_data['wall_length_m']
     default_start = template_data['wall_start_height_m']
@@ -80,35 +87,114 @@ else:
     default_end = config['defaults']['wall_end_height_m']
     default_width = config['defaults']['wall_width_cm']
 
-length = st.sidebar.number_input(
-    "Länge (m)",
-    min_value=0.1,
-    max_value=100.0,
-    value=float(default_length),
-    step=0.5,
-    help="Länge der Mauer in Metern"
-)
+# Einfache Mauer (wie bisher)
+if wall_type == "Einfach (durchgehend)":
+    length = st.sidebar.number_input(
+        "Länge (m)",
+        min_value=0.1,
+        max_value=100.0,
+        value=float(default_length),
+        step=0.5,
+        help="Länge der Mauer in Metern"
+    )
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        start_height = st.sidebar.number_input(
+            "Anfangshöhe (m)",
+            min_value=0.1,
+            max_value=5.0,
+            value=float(default_start),
+            step=0.1,
+            help="Höhe am Anfang der Mauer"
+        )
+    
+    with col2:
+        end_height = st.sidebar.number_input(
+            "Endhöhe (m)",
+            min_value=0.1,
+            max_value=5.0,
+            value=float(default_end),
+            step=0.1,
+            help="Höhe am Ende der Mauer (für Gefälle)"
+        )
+    
+    # Flags für Berechnung
+    is_two_zone = False
+    zone1_length = None
+    zone1_height = None
+    zone2_length = None
+    zone2_end_height = None
 
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    start_height = st.sidebar.number_input(
-        "Anfangshöhe (m)",
+# Zweizonen-Mauer
+else:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**📏 Zone 1 (Flacher Bereich)**")
+    
+    zone1_length = st.sidebar.number_input(
+        "Länge Zone 1 (m)",
+        min_value=0.1,
+        max_value=100.0,
+        value=float(default_length) / 2,
+        step=0.5,
+        help="Länge des flachen Bereichs"
+    )
+    
+    zone1_height = st.sidebar.number_input(
+        "Höhe Zone 1 (m)",
         min_value=0.1,
         max_value=5.0,
         value=float(default_start),
         step=0.1,
-        help="Höhe am Anfang der Mauer"
+        help="Konstante Höhe im flachen Bereich"
     )
-
-with col2:
-    end_height = st.sidebar.number_input(
-        "Endhöhe (m)",
+    
+    st.sidebar.markdown("**📐 Zone 2 (Variabler Bereich)**")
+    
+    zone2_length = st.sidebar.number_input(
+        "Länge Zone 2 (m)",
+        min_value=0.1,
+        max_value=100.0,
+        value=float(default_length) / 2,
+        step=0.5,
+        help="Länge des ansteigenden/abfallenden Bereichs"
+    )
+    
+    st.sidebar.info(f"💡 Zone 2 startet bei {zone1_height:.2f} m (Endhöhe Zone 1)")
+    
+    zone2_end_height = st.sidebar.number_input(
+        "Endhöhe Zone 2 (m)",
         min_value=0.1,
         max_value=5.0,
         value=float(default_end),
         step=0.1,
-        help="Höhe am Ende der Mauer (für Gefälle)"
+        help="Höhe am Ende von Zone 2"
     )
+    
+    # Visuelle Hilfe
+    total_length_zones = zone1_length + zone2_length
+    st.sidebar.markdown("---")
+    st.sidebar.caption(f"**Gesamtlänge:** {total_length_zones:.1f} m")
+    
+    # ASCII-Diagramm
+    zone1_bars = int((zone1_length / total_length_zones) * 20) if total_length_zones > 0 else 10
+    zone2_bars = 20 - zone1_bars
+    
+    if zone2_end_height > zone1_height:
+        arrow = "↗"
+    elif zone2_end_height < zone1_height:
+        arrow = "↘"
+    else:
+        arrow = "→"
+    
+    st.sidebar.text(f"{'━' * zone1_bars}┃{'━' * zone2_bars}")
+    st.sidebar.caption(f"{zone1_height:.1f}m (flach) → {arrow} {zone2_end_height:.1f}m")
+    
+    # Für Berechnungen: Kombinierte Werte
+    length = total_length_zones
+    start_height = zone1_height
+    end_height = zone2_end_height
+    is_two_zone = True
 
 # Stein-Auswahl
 st.sidebar.subheader("🧱 Schalstein-Typ")
@@ -193,7 +279,12 @@ result = calculate_all(
     width=width,
     stone_type=selected_stone_type,
     cement_price=cement_price,
-    gravel_price=gravel_price
+    gravel_price=gravel_price,
+    is_two_zone=is_two_zone,
+    zone1_length=zone1_length,
+    zone1_height=zone1_height,
+    zone2_length=zone2_length,
+    zone2_end_height=zone2_end_height
 )
 
 # Fehlerbehandlung (Mittlere Priorität)
@@ -228,6 +319,33 @@ with tab_overview:
     
     with col4:
         st.metric("Betonvolumen", f"{result['volume_with_buffer_m3']} m³")
+    
+    # Zone-Breakdown (falls 2-Zonen-Mauer)
+    if result.get('is_two_zone') and result.get('zone_breakdown'):
+        st.markdown("---")
+        st.subheader("📐 Zonen-Aufschlüsselung")
+        
+        col1, col2 = st.columns(2)
+        
+        zone1 = result['zone_breakdown']['zone1']
+        zone2 = result['zone_breakdown']['zone2']
+        
+        with col1:
+            st.markdown("**📏 Zone 1 (Flacher Bereich)**")
+            st.write(f"- Länge: {zone1['length']:.1f} m")
+            st.write(f"- Höhe: {zone1['height']:.2f} m")
+            st.write(f"- Fläche: {zone1['area']} m²")
+            st.write(f"- Steine: {zone1['stones']} St.")
+            st.write(f"- Reihen: {zone1['rows']}")
+        
+        with col2:
+            st.markdown("**📐 Zone 2 (Variabler Bereich)**")
+            st.write(f"- Länge: {zone2['length']:.1f} m")
+            st.write(f"- Höhe: {zone2['start_height']:.2f} m → {zone2['end_height']:.2f} m")
+            st.write(f"- Ø Höhe: {zone2['avg_height']} m")
+            st.write(f"- Fläche: {zone2['area']} m²")
+            st.write(f"- Steine: {zone2['stones']} St.")
+            st.write(f"- Reihen: {zone2['rows']}")
     
     # Kosten-Übersicht (falls aktiviert)
     if enable_costs and result['costs']:
@@ -523,7 +641,7 @@ st.markdown("---")
 col1, col2, col3 = st.columns([2, 1, 1])
 
 with col1:
-    st.caption("**BetonKalk** - Betonbedarfsrechner für Schalsteinmauern")
+    st.caption("**MauerPlaner** - Betonbedarfsrechner für Schalsteinmauern")
     st.caption("Ein Service von **LEANOFY** | © 2025")
 
 with col2:

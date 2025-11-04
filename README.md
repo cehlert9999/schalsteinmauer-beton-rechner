@@ -1,4 +1,6 @@
-# 🧱 Schalsteinmauer Betonrechner
+# 🧱 MauerPlaner
+
+**Betonbedarfsrechner für Schalsteinmauern** | *by LEANOFY*
 
 Ein professionelles Streamlit-basiertes Tool zur Berechnung des Betonbedarfs für Schalsteinmauern basierend auf FCN-Spezifikationen.
 
@@ -281,7 +283,13 @@ Bei Fragen oder Problemen:
 
 **Version**: 1.0.0  
 **Erstellt**: 2025  
+**Betreiber**: LEANOFY  
 **Basiert auf**: FCN-Spezifikationen für Schalsteine  
+**Website**: [https://leanofy.de](https://leanofy.de)  
+
+---
+
+**MauerPlaner** - Professionelle Betonbedarfsberechnung by LEANOFY
 
 🧱 **Viel Erfolg mit Ihrem Mauerprojekt!** 🏗️
 

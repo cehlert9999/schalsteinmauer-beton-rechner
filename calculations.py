@@ -318,6 +318,69 @@ def get_disclaimer() -> str:
     )
 
 
+def calculate_two_zone_wall(
+    zone1_length: float,
+    zone1_height: float,
+    zone2_length: float,
+    zone2_end_height: float,
+    stone_type: str
+) -> Tuple[float, int, int, float, Dict]:
+    """
+    Berechnet für 2-Zonen-Mauer
+    
+    Args:
+        zone1_length: Länge der flachen Zone in Metern
+        zone1_height: Höhe der flachen Zone in Metern
+        zone2_length: Länge der variablen Zone in Metern
+        zone2_end_height: Endhöhe der variablen Zone in Metern
+        stone_type: Typ des Steins
+        
+    Returns:
+        (total_area, total_stones, rows, zone1_area, zone_breakdown)
+    """
+    config = load_config()
+    stone_data = config['stone_types'][stone_type]
+    stones_per_m2 = stone_data['stones_per_m2']
+    stone_height_m = stone_data['height_cm'] / 100
+    
+    # Zone 1: Rechteckige Fläche (flach)
+    zone1_area = zone1_length * zone1_height
+    zone1_stones = math.ceil(zone1_area * stones_per_m2)
+    zone1_rows = math.ceil(zone1_height / stone_height_m)
+    
+    # Zone 2: Trapezförmige Fläche (von zone1_height bis zone2_end_height)
+    zone2_avg_height = (zone1_height + zone2_end_height) / 2
+    zone2_area = zone2_length * zone2_avg_height
+    zone2_stones = math.ceil(zone2_area * stones_per_m2)
+    zone2_rows = math.ceil(max(zone1_height, zone2_end_height) / stone_height_m)
+    
+    # Gesamt
+    total_area = zone1_area + zone2_area
+    total_stones = zone1_stones + zone2_stones
+    max_rows = max(zone1_rows, zone2_rows)
+    
+    zone_breakdown = {
+        'zone1': {
+            'length': zone1_length,
+            'height': zone1_height,
+            'area': round(zone1_area, 2),
+            'stones': zone1_stones,
+            'rows': zone1_rows
+        },
+        'zone2': {
+            'length': zone2_length,
+            'start_height': zone1_height,
+            'end_height': zone2_end_height,
+            'avg_height': round(zone2_avg_height, 2),
+            'area': round(zone2_area, 2),
+            'stones': zone2_stones,
+            'rows': zone2_rows
+        }
+    }
+    
+    return total_area, total_stones, max_rows, total_area, zone_breakdown
+
+
 def calculate_all(
     length: float,
     start_height: float,
@@ -325,7 +388,12 @@ def calculate_all(
     width: float,
     stone_type: str,
     cement_price: Optional[float] = None,
-    gravel_price: Optional[float] = None
+    gravel_price: Optional[float] = None,
+    is_two_zone: bool = False,
+    zone1_length: Optional[float] = None,
+    zone1_height: Optional[float] = None,
+    zone2_length: Optional[float] = None,
+    zone2_end_height: Optional[float] = None
 ) -> Dict:
     """
     Führt alle Berechnungen durch und gibt ein vollständiges Ergebnis zurück
@@ -352,8 +420,36 @@ def calculate_all(
     # Warnungen
     warnings = get_height_warnings(start_height, end_height)
     
-    # Steinanzahl
-    total_stones, rows, area = calculate_stone_count(length, start_height, end_height, stone_type)
+    # Spezialfall: 2-Zonen-Mauer
+    zone_breakdown = None
+    if is_two_zone and all([zone1_length, zone1_height, zone2_length, zone2_end_height]):
+        # 2-Zonen-Berechnung
+        area, total_stones, rows, _, zone_breakdown = calculate_two_zone_wall(
+            zone1_length, zone1_height, zone2_length, zone2_end_height, stone_type
+        )
+        
+        # Layout für Visualisierung (2 Zonen)
+        layout = {
+            'stone_length_m': config['stone_types'][stone_type]['length_cm'] / 100,
+            'stone_width_m': config['stone_types'][stone_type]['width_cm'] / 100,
+            'stone_height_m': config['stone_types'][stone_type]['height_cm'] / 100,
+            'is_two_zone': True,
+            'zone1_length': zone1_length,
+            'zone1_height': zone1_height,
+            'zone2_length': zone2_length,
+            'zone2_start_height': zone1_height,
+            'zone2_end_height': zone2_end_height,
+            'total_length': length,
+            'start_height': start_height,
+            'end_height': end_height,
+            'rows_start': zone_breakdown['zone1']['rows'],
+            'rows_end': zone_breakdown['zone2']['rows'],
+            'stones_per_row': math.ceil(length / (config['stone_types'][stone_type]['length_cm'] / 100))
+        }
+    else:
+        # Standard-Berechnung (einfach)
+        total_stones, rows, area = calculate_stone_count(length, start_height, end_height, stone_type)
+        layout = get_stone_layout(length, start_height, end_height, stone_type)
     
     # Volumen
     base_volume, volume_with_buffer = calculate_fill_volume(total_stones, stone_type)
@@ -366,13 +462,10 @@ def calculate_all(
     if cement_price is not None and gravel_price is not None:
         costs = calculate_costs(materials, cement_price, gravel_price)
     
-    # Layout für Visualisierung
-    layout = get_stone_layout(length, start_height, end_height, stone_type)
-    
     # Steininfo
     stone_data = config['stone_types'][stone_type]
     
-    return {
+    result = {
         'valid': True,
         'warnings': warnings,
         'area': round(area, 2),
@@ -386,7 +479,14 @@ def calculate_all(
         'layout': layout,
         'stone_data': stone_data,
         'concrete_recommendation': get_concrete_recommendation(),
-        'disclaimer': get_disclaimer()
+        'disclaimer': get_disclaimer(),
+        'is_two_zone': is_two_zone
     }
+    
+    # Füge Zone-Breakdown hinzu, wenn vorhanden
+    if zone_breakdown:
+        result['zone_breakdown'] = zone_breakdown
+    
+    return result
 
 

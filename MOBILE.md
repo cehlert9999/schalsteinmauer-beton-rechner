@@ -258,3 +258,4 @@ Bei Problemen auf mobilen Geräten:
 **Browser**: Chrome 120+, Safari 16+, Firefox 120+
 
 
+

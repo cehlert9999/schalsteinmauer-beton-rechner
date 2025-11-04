@@ -177,3 +177,4 @@ Viel Erfolg mit Ihrem Mauerprojekt! 🧱
 **Brauchen Sie Hilfe?** Erstellen Sie ein Issue im Repository oder lesen Sie `README.md` für Details.
 
 
+

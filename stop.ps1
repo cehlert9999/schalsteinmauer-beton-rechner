@@ -53,3 +53,4 @@ Write-Host "[FERTIG] Server gestoppt." -ForegroundColor Green
 Write-Host ""
 Read-Host "Drücken Sie Enter zum Schließen"
 
+
