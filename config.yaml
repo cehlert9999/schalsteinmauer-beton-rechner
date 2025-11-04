@@ -58,6 +58,12 @@ prices:
   cement_per_bag_eur: 5.0
   gravel_per_ton_eur: 34.0
   stone_per_piece_eur: 2.50  # Schalstein-Preis ohne MwSt
+reinforcement_steel:
+  price_per_6m_rod_eur: 6.0
+  rods_per_row: 2  # 2 Ø 8mm pro Lage gemäß FCN-Empfehlung
+  rod_length_m: 6.0
+  min_height_for_reinforcement_m: 1.0
+  diameter_mm: 8
 concrete_recommendation:
   quality: C25/30
   max_grain_size_mm: 16

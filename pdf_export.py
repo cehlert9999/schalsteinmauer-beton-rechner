@@ -157,8 +157,14 @@ def create_pdf_report(result: Dict, inputs: Dict, fig_2d: go.Figure = None) -> B
         ['Wasser', f"{materials['water_liters']}", 'Liter'],
     ]
     
+    # Bewehrungsstahl hinzufügen (falls vorhanden)
+    if result.get('reinforcement'):
+        rebar = result['reinforcement']
+        mat_data.append(['Bewehrungsstahl (ab 1m Höhe)', f"{rebar['rods_6m_needed']}", f"Stäbe à {rebar['rod_length_m']:.0f}m (Ø {rebar['diameter_mm']}mm)"])
+        mat_data.append(['', f"{rebar['total_length_m']}", 'm gesamt'])
+    
     mat_table = Table(mat_data, colWidths=[8*cm, 4*cm, 4*cm])
-    mat_table.setStyle(TableStyle([
+    table_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e74c3c')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
@@ -170,7 +176,13 @@ def create_pdf_report(result: Dict, inputs: Dict, fig_2d: go.Figure = None) -> B
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('SPAN', (0, 1), (0, 2)),
         ('SPAN', (0, 3), (0, 4)),
-    ]))
+    ]
+    
+    # Span für Bewehrung anpassen
+    if result.get('reinforcement'):
+        table_style.append(('SPAN', (0, 6), (0, 7)))
+    
+    mat_table.setStyle(TableStyle(table_style))
     
     elements.append(mat_table)
     elements.append(Spacer(1, 0.5*cm))
@@ -182,10 +194,16 @@ def create_pdf_report(result: Dict, inputs: Dict, fig_2d: go.Figure = None) -> B
         costs = result['costs']
         cost_data = [
             ['Position', 'Kosten'],
+            ['Schalsteine (inkl. MwSt)', f"{costs['stone_cost_with_vat']:.2f} €"],
             ['Zement', f"{costs['cement_cost']:.2f} €"],
             ['Kies', f"{costs['gravel_cost']:.2f} €"],
-            ['Gesamt', f"{costs['total_cost']:.2f} €"],
         ]
+        
+        # Bewehrungskosten hinzufügen (falls vorhanden)
+        if result.get('reinforcement'):
+            cost_data.append(['Bewehrungsstahl', f"{costs['reinforcement_cost']:.2f} €"])
+        
+        cost_data.append(['Gesamt', f"{costs['total_cost']:.2f} €"])
         
         cost_table = Table(cost_data, colWidths=[10*cm, 6*cm])
         cost_table.setStyle(TableStyle([

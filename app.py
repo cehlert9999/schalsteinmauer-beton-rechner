@@ -532,6 +532,26 @@ with tab_materials:
         st.write(f"- {mix['gravel_parts']} Teile Kies")
         st.write(f"- {mix['water_parts']} Teile Wasser")
     
+    # Bewehrungsstahl (nur wenn vorhanden)
+    if result['reinforcement']:
+        st.markdown("---")
+        st.subheader("🔩 Bewehrungsstahl")
+        st.info("💡 Automatisch berechnet ab 1m Höhe gemäß FCN-Empfehlung")
+        
+        rebar = result['reinforcement']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Benötigte 6m Stäbe", f"{rebar['rods_6m_needed']} Stück")
+            st.caption(f"Ø {rebar['diameter_mm']} mm, je {rebar['rod_length_m']:.0f}m")
+            st.caption(f"Gesamtlänge: {rebar['total_length_m']} m")
+        
+        with col2:
+            st.metric("Anzahl Lagen", f"{rebar['rows']}")
+            st.caption(f"{rebar['rods_per_row']} Stäbe pro Reihe")
+            st.caption(f"= {rebar['total_rods_needed']} Stäbe gesamt")
+    
     # Kosten (falls aktiviert)
     if enable_costs and result['costs']:
         st.markdown("---")
@@ -540,19 +560,40 @@ with tab_materials:
         costs = result['costs']
         
         # Erste Zeile: Einzelposten
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("🧱 Schalsteine", f"{costs['stone_cost_with_vat']:.2f} €")
-            st.caption(f"{result['total_stones']} St. × {stone_price:.2f} € + 19% MwSt")
-        
-        with col2:
-            st.metric("🧱 Zement", f"{costs['cement_cost']:.2f} €")
-            st.caption(f"{materials['cement_bags']} Säcke × {cement_price:.2f} €")
-        
-        with col3:
-            st.metric("🪨 Kies", f"{costs['gravel_cost']:.2f} €")
-            st.caption(f"{materials['gravel_tons']} t × {gravel_price:.2f} €")
+        if result['reinforcement']:
+            # 4 Spalten wenn Bewehrung vorhanden
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("🧱 Schalsteine", f"{costs['stone_cost_with_vat']:.2f} €")
+                st.caption(f"{result['total_stones']} St. × {stone_price:.2f} € + 19% MwSt")
+            
+            with col2:
+                st.metric("🧱 Zement", f"{costs['cement_cost']:.2f} €")
+                st.caption(f"{materials['cement_bags']} Säcke × {cement_price:.2f} €")
+            
+            with col3:
+                st.metric("🪨 Kies", f"{costs['gravel_cost']:.2f} €")
+                st.caption(f"{materials['gravel_tons']} t × {gravel_price:.2f} €")
+            
+            with col4:
+                st.metric("🔩 Bewehrung", f"{costs['reinforcement_cost']:.2f} €")
+                st.caption(f"{result['reinforcement']['rods_6m_needed']} Stäbe × {result['reinforcement']['price_per_rod_eur']:.2f} €")
+        else:
+            # 3 Spalten ohne Bewehrung
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("🧱 Schalsteine", f"{costs['stone_cost_with_vat']:.2f} €")
+                st.caption(f"{result['total_stones']} St. × {stone_price:.2f} € + 19% MwSt")
+            
+            with col2:
+                st.metric("🧱 Zement", f"{costs['cement_cost']:.2f} €")
+                st.caption(f"{materials['cement_bags']} Säcke × {cement_price:.2f} €")
+            
+            with col3:
+                st.metric("🪨 Kies", f"{costs['gravel_cost']:.2f} €")
+                st.caption(f"{materials['gravel_tons']} t × {gravel_price:.2f} €")
         
         # Zweite Zeile: Summen
         st.markdown("---")
@@ -587,7 +628,16 @@ with tab_materials:
    → Kosten: {costs['gravel_cost']:.2f} €
 
 4. **Wasser:** ca. {materials['water_liters']} Liter (vor Ort)
-
+"""
+        
+        if result['reinforcement']:
+            shopping_list += f"""
+5. **Bewehrungsstahl:** {result['reinforcement']['rods_6m_needed']} Stäbe à 6m (Ø {result['reinforcement']['diameter_mm']} mm)
+   → Kosten: {costs['reinforcement_cost']:.2f} €
+   → Gesamtlänge: {result['reinforcement']['total_length_m']} m
+"""
+        
+        shopping_list += f"""
 ---
 
 **Zwischensumme (netto):** {costs['subtotal']:.2f} €  
@@ -684,6 +734,16 @@ MATERIALBEDARF:
 - Wasser: {materials['water_liters']} Liter
 """
     
+    if result['reinforcement']:
+        rebar = result['reinforcement']
+        export_text += f"""
+BEWEHRUNGSSTAHL (ab 1m Höhe):
+- Benötigte 6m Stäbe: {rebar['rods_6m_needed']} Stück (Ø {rebar['diameter_mm']} mm)
+- Anzahl Lagen: {rebar['rows']}
+- Stäbe pro Reihe: {rebar['rods_per_row']}
+- Gesamtlänge: {rebar['total_length_m']} m
+"""
+    
     if enable_costs and result['costs']:
         export_text += f"""
 KOSTEN:
@@ -691,7 +751,13 @@ KOSTEN:
   + MwSt (19%): {costs['stone_vat']:.2f} €
   = Gesamt: {costs['stone_cost_with_vat']:.2f} €
 - Zement: {materials['cement_bags']} Säcke × {cement_price:.2f} € = {costs['cement_cost']:.2f} €
-- Kies: {materials['gravel_tons']} t × {gravel_price:.2f} € = {costs['gravel_cost']:.2f} €
+- Kies: {materials['gravel_tons']} t × {gravel_price:.2f} € = {costs['gravel_cost']:.2f} €"""
+        
+        if result['reinforcement']:
+            export_text += f"""
+- Bewehrungsstahl: {result['reinforcement']['rods_6m_needed']} Stäbe × {result['reinforcement']['price_per_rod_eur']:.2f} € = {costs['reinforcement_cost']:.2f} €"""
+        
+        export_text += f"""
 ---
 Zwischensumme (netto): {costs['subtotal']:.2f} €
 MwSt (19% auf Steine): {costs['stone_vat']:.2f} €

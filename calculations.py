@@ -214,12 +214,66 @@ def calculate_materials(volume_m3: float) -> Dict[str, float]:
     }
 
 
+def calculate_reinforcement(
+    rows: int,
+    wall_length: float,
+    max_height: float
+) -> Optional[Dict[str, float]]:
+    """
+    Berechnet Bewehrungsstahl-Bedarf ab 1m Höhe
+    
+    Args:
+        rows: Anzahl der Steinreihen
+        wall_length: Länge der Mauer in Metern
+        max_height: Maximale Höhe der Mauer in Metern
+        
+    Returns:
+        Dictionary mit Bewehrungsdaten oder None wenn nicht benötigt
+    """
+    config = load_config()
+    rebar = config['reinforcement_steel']
+    
+    # Nur ab Mindesthöhe berechnen
+    if max_height < rebar['min_height_for_reinforcement_m']:
+        return None
+    
+    # Stäbe pro Reihe (z.B. 2 Stück)
+    rods_per_row = rebar['rods_per_row']
+    
+    # Gesamtanzahl Stäbe (jede Reihe bekommt 2 Stäbe)
+    total_rods_needed = rows * rods_per_row
+    
+    # Gesamtlänge in Metern (Länge der Mauer × Anzahl Lagen × Stäbe pro Lage)
+    total_length_m = wall_length * rows * rods_per_row
+    
+    # Anzahl 6m Stäbe (aufgerundet)
+    rod_length_m = rebar['rod_length_m']
+    rods_6m_needed = math.ceil(total_length_m / rod_length_m)
+    
+    # Kosten
+    price_per_rod = rebar['price_per_6m_rod_eur']
+    total_cost = rods_6m_needed * price_per_rod
+    
+    return {
+        'rows': rows,
+        'rods_per_row': rods_per_row,
+        'total_rods_needed': total_rods_needed,
+        'total_length_m': round(total_length_m, 1),
+        'rod_length_m': rod_length_m,
+        'rods_6m_needed': rods_6m_needed,
+        'price_per_rod_eur': price_per_rod,
+        'total_cost': round(total_cost, 2),
+        'diameter_mm': rebar['diameter_mm']
+    }
+
+
 def calculate_costs(
     materials: Dict[str, float], 
     cement_price: float, 
     gravel_price: float,
     stone_count: int = 0,
-    stone_price: float = 0.0
+    stone_price: float = 0.0,
+    reinforcement_cost: float = 0.0
 ) -> Dict[str, float]:
     """
     Berechnet die Materialkosten
@@ -230,6 +284,7 @@ def calculate_costs(
         gravel_price: Preis pro Tonne Kies in €
         stone_count: Anzahl Schalsteine
         stone_price: Preis pro Schalstein in €
+        reinforcement_cost: Kosten für Bewehrungsstahl in €
         
     Returns:
         Dictionary mit Kosten
@@ -239,14 +294,14 @@ def calculate_costs(
     stone_cost = stone_count * stone_price if stone_price > 0 else 0
     
     # Gesamt ohne MwSt
-    subtotal = cement_cost + gravel_cost + stone_cost
+    subtotal = cement_cost + gravel_cost + stone_cost + reinforcement_cost
     
     # MwSt auf Schalsteine (19%)
     stone_vat = stone_cost * 0.19 if stone_cost > 0 else 0
     stone_cost_with_vat = stone_cost + stone_vat
     
     # Gesamtkosten mit MwSt auf Steine
-    total_cost = cement_cost + gravel_cost + stone_cost_with_vat
+    total_cost = cement_cost + gravel_cost + stone_cost_with_vat + reinforcement_cost
     
     return {
         'cement_cost': round(cement_cost, 2),
@@ -254,6 +309,7 @@ def calculate_costs(
         'stone_cost': round(stone_cost, 2),
         'stone_cost_with_vat': round(stone_cost_with_vat, 2),
         'stone_vat': round(stone_vat, 2),
+        'reinforcement_cost': round(reinforcement_cost, 2),
         'subtotal': round(subtotal, 2),
         'total_cost': round(total_cost, 2)
     }
@@ -480,15 +536,21 @@ def calculate_all(
     # Materialien
     materials = calculate_materials(volume_with_buffer)
     
+    # Bewehrungsstahl (automatisch ab 1m Höhe)
+    max_height = max(start_height, end_height)
+    reinforcement = calculate_reinforcement(rows, length, max_height)
+    
     # Kosten (falls Preise angegeben)
     costs = None
     if cement_price is not None and gravel_price is not None:
+        reinforcement_cost = reinforcement['total_cost'] if reinforcement else 0.0
         costs = calculate_costs(
             materials, 
             cement_price, 
             gravel_price,
             stone_count=total_stones,
-            stone_price=stone_price if stone_price is not None else 0.0
+            stone_price=stone_price if stone_price is not None else 0.0,
+            reinforcement_cost=reinforcement_cost
         )
     
     # Steininfo
@@ -505,6 +567,7 @@ def calculate_all(
         'buffer_percentage': config['buffer']['percentage'],
         'materials': materials,
         'costs': costs,
+        'reinforcement': reinforcement,
         'layout': layout,
         'stone_data': stone_data,
         'concrete_recommendation': get_concrete_recommendation(),
