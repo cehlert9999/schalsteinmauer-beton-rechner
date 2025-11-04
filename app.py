@@ -297,6 +297,17 @@ if enable_costs:
         step=0.10,
         help="Preis ohne MwSt (19%)"
     )
+    
+    rebar_price = st.sidebar.number_input(
+        "Bewehrungsstahl (6m Stab) in €",
+        min_value=0.0,
+        max_value=50.0,
+        value=float(config['reinforcement_steel']['price_per_6m_rod_eur']),
+        step=0.50,
+        help="Preis pro 6m Stab (Ø 8mm), ab 1m Höhe"
+    )
+else:
+    rebar_price = None
 
 # Berechnung durchführen
 st.sidebar.markdown("---")
@@ -316,6 +327,7 @@ result = calculate_all(
     cement_price=cement_price,
     gravel_price=gravel_price,
     stone_price=stone_price,
+    rebar_price=rebar_price,
     is_two_zone=is_two_zone,
     zone1_length=zone1_length,
     zone1_height=zone1_height,

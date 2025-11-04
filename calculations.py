@@ -217,7 +217,8 @@ def calculate_materials(volume_m3: float) -> Dict[str, float]:
 def calculate_reinforcement(
     rows: int,
     wall_length: float,
-    max_height: float
+    max_height: float,
+    price_per_rod: Optional[float] = None
 ) -> Optional[Dict[str, float]]:
     """
     Berechnet Bewehrungsstahl-Bedarf ab 1m Höhe
@@ -226,6 +227,7 @@ def calculate_reinforcement(
         rows: Anzahl der Steinreihen
         wall_length: Länge der Mauer in Metern
         max_height: Maximale Höhe der Mauer in Metern
+        price_per_rod: Preis pro 6m Stab (optional, sonst aus Config)
         
     Returns:
         Dictionary mit Bewehrungsdaten oder None wenn nicht benötigt
@@ -250,8 +252,9 @@ def calculate_reinforcement(
     rod_length_m = rebar['rod_length_m']
     rods_6m_needed = math.ceil(total_length_m / rod_length_m)
     
-    # Kosten
-    price_per_rod = rebar['price_per_6m_rod_eur']
+    # Kosten (verwende übergebenen Preis oder Config-Preis)
+    if price_per_rod is None:
+        price_per_rod = rebar['price_per_6m_rod_eur']
     total_cost = rods_6m_needed * price_per_rod
     
     return {
@@ -468,6 +471,7 @@ def calculate_all(
     cement_price: Optional[float] = None,
     gravel_price: Optional[float] = None,
     stone_price: Optional[float] = None,
+    rebar_price: Optional[float] = None,
     is_two_zone: bool = False,
     zone1_length: Optional[float] = None,
     zone1_height: Optional[float] = None,
@@ -485,6 +489,7 @@ def calculate_all(
         stone_type: Typ des Steins
         cement_price: Preis pro Zementsack (optional)
         gravel_price: Preis pro Tonne Kies (optional)
+        rebar_price: Preis pro 6m Bewehrungsstab (optional)
         
     Returns:
         Dictionary mit allen Berechnungsergebnissen
@@ -538,7 +543,7 @@ def calculate_all(
     
     # Bewehrungsstahl (automatisch ab 1m Höhe)
     max_height = max(start_height, end_height)
-    reinforcement = calculate_reinforcement(rows, length, max_height)
+    reinforcement = calculate_reinforcement(rows, length, max_height, price_per_rod=rebar_price)
     
     # Kosten (falls Preise angegeben)
     costs = None
