@@ -57,6 +57,7 @@ buffer:
 prices:
   cement_per_bag_eur: 5.0
   gravel_per_ton_eur: 34.0
+  stone_per_piece_eur: 2.50  # Schalstein-Preis ohne MwSt
 concrete_recommendation:
   quality: C25/30
   max_grain_size_mm: 16

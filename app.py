@@ -266,22 +266,36 @@ enable_costs = st.sidebar.checkbox("Kosten berechnen", value=True)
 
 cement_price = None
 gravel_price = None
+stone_price = None
 
 if enable_costs:
-    cement_price = st.sidebar.number_input(
-        "Preis Zementsack (25 kg) in €",
-        min_value=0.0,
-        max_value=50.0,
-        value=float(config['prices']['cement_per_bag_eur']),
-        step=0.5
-    )
+    col1, col2 = st.sidebar.columns(2)
     
-    gravel_price = st.sidebar.number_input(
-        "Preis Kies (pro Tonne) in €",
+    with col1:
+        cement_price = st.sidebar.number_input(
+            "Zement (25 kg) in €",
+            min_value=0.0,
+            max_value=50.0,
+            value=float(config['prices']['cement_per_bag_eur']),
+            step=0.5
+        )
+    
+    with col2:
+        gravel_price = st.sidebar.number_input(
+            "Kies (pro Tonne) in €",
+            min_value=0.0,
+            max_value=200.0,
+            value=float(config['prices']['gravel_per_ton_eur']),
+            step=5.0
+        )
+    
+    stone_price = st.sidebar.number_input(
+        "Schalstein (pro Stück) in €",
         min_value=0.0,
-        max_value=200.0,
-        value=float(config['prices']['gravel_per_ton_eur']),
-        step=5.0
+        max_value=20.0,
+        value=float(config['prices']['stone_per_piece_eur']),
+        step=0.10,
+        help="Preis ohne MwSt (19%)"
     )
 
 # Berechnung durchführen
@@ -301,6 +315,7 @@ result = calculate_all(
     stone_type=selected_stone_type,
     cement_price=cement_price,
     gravel_price=gravel_price,
+    stone_price=stone_price,
     is_two_zone=is_two_zone,
     zone1_length=zone1_length,
     zone1_height=zone1_height,
@@ -371,9 +386,11 @@ with tab_overview:
     # Kosten-Übersicht (falls aktiviert)
     if enable_costs and result['costs']:
         st.markdown("---")
-        col1, col2, col3 = st.columns(3)
         
         costs = result['costs']
+        
+        # Erste Zeile: Beton-Materialien
+        col1, col2 = st.columns(2)
         
         with col1:
             st.metric("💶 Zementkosten", f"{costs['cement_cost']:.2f} €")
@@ -381,9 +398,25 @@ with tab_overview:
         with col2:
             st.metric("💶 Kieskosten", f"{costs['gravel_cost']:.2f} €")
         
-        with col3:
-            st.metric("💰 Gesamtkosten", f"{costs['total_cost']:.2f} €", 
-                     help="Materialkosten ohne Wasser")
+        # Zweite Zeile: Schalsteine + Gesamt
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if costs.get('stone_cost', 0) > 0:
+                st.metric(
+                    "🧱 Schalsteinkosten", 
+                    f"{costs['stone_cost_with_vat']:.2f} €",
+                    help=f"Netto: {costs['stone_cost']:.2f} € + {costs['stone_vat']:.2f} € MwSt (19%)"
+                )
+            else:
+                st.metric("🧱 Schalsteinkosten", "—")
+        
+        with col2:
+            st.metric(
+                "💰 Gesamtkosten", 
+                f"{costs['total_cost']:.2f} €", 
+                help="Alle Materialien inkl. MwSt auf Steine"
+            )
     
     st.markdown("---")
     
@@ -506,19 +539,36 @@ with tab_materials:
         
         costs = result['costs']
         
+        # Erste Zeile: Einzelposten
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Zementkosten", f"{costs['cement_cost']:.2f} €")
-            st.caption(f"{materials['cement_bags']} Säcke × {cement_price:.2f} €")
+            st.metric("🧱 Schalsteine", f"{costs['stone_cost_with_vat']:.2f} €")
+            st.caption(f"{result['total_stones']} St. × {stone_price:.2f} € + 19% MwSt")
         
         with col2:
-            st.metric("Kieskosten", f"{costs['gravel_cost']:.2f} €")
-            st.caption(f"{materials['gravel_tons']} t × {gravel_price:.2f} €")
+            st.metric("🧱 Zement", f"{costs['cement_cost']:.2f} €")
+            st.caption(f"{materials['cement_bags']} Säcke × {cement_price:.2f} €")
         
         with col3:
-            st.metric("**Gesamtkosten**", f"{costs['total_cost']:.2f} €", 
-                     help="Zement + Kies (ohne Wasser)")
+            st.metric("🪨 Kies", f"{costs['gravel_cost']:.2f} €")
+            st.caption(f"{materials['gravel_tons']} t × {gravel_price:.2f} €")
+        
+        # Zweite Zeile: Summen
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Netto (ohne MwSt)", f"{costs['subtotal']:.2f} €",
+                     help="Alle Materialien ohne MwSt")
+        
+        with col2:
+            st.metric("MwSt (19%)", f"{costs['stone_vat']:.2f} €",
+                     help="Nur auf Schalsteine")
+        
+        with col3:
+            st.metric("💰 Gesamtkosten", f"{costs['total_cost']:.2f} €", 
+                     help="Alle Materialien inkl. MwSt auf Steine")
         
         # Einkaufsliste
         st.markdown("---")
@@ -527,17 +577,24 @@ with tab_materials:
         shopping_list = f"""
 **Benötigte Materialien:**
 
-1. **Zement:** {materials['cement_bags']} Säcke à {materials['cement_bag_size_kg']} kg 
+1. **Schalsteine:** {result['total_stones']} Stück 
+   → Kosten: {costs['stone_cost']:.2f} € (netto) + {costs['stone_vat']:.2f} € MwSt = {costs['stone_cost_with_vat']:.2f} €
+
+2. **Zement:** {materials['cement_bags']} Säcke à {materials['cement_bag_size_kg']} kg 
    → Kosten: {costs['cement_cost']:.2f} €
 
-2. **Rundkies (0-16 mm):** {materials['gravel_tons']} Tonnen
+3. **Rundkies (0-16 mm):** {materials['gravel_tons']} Tonnen
    → Kosten: {costs['gravel_cost']:.2f} €
 
-3. **Wasser:** ca. {materials['water_liters']} Liter (vor Ort)
+4. **Wasser:** ca. {materials['water_liters']} Liter (vor Ort)
 
+---
+
+**Zwischensumme (netto):** {costs['subtotal']:.2f} €  
+**MwSt (19% auf Steine):** {costs['stone_vat']:.2f} €  
 **Gesamtkosten:** {costs['total_cost']:.2f} €
 
-**Hinweis:** Preise verstehen sich als Schätzung ohne Lieferkosten.
+**Hinweis:** Preise ohne Lieferkosten. MwSt nur auf Schalsteine berechnet.
         """
         
         st.markdown(shopping_list)
@@ -630,9 +687,15 @@ MATERIALBEDARF:
     if enable_costs and result['costs']:
         export_text += f"""
 KOSTEN:
-- Zement: {costs['cement_cost']:.2f} €
-- Kies: {costs['gravel_cost']:.2f} €
-- Gesamt: {costs['total_cost']:.2f} €
+- Schalsteine: {result['total_stones']} St. × {stone_price:.2f} € = {costs['stone_cost']:.2f} € (netto)
+  + MwSt (19%): {costs['stone_vat']:.2f} €
+  = Gesamt: {costs['stone_cost_with_vat']:.2f} €
+- Zement: {materials['cement_bags']} Säcke × {cement_price:.2f} € = {costs['cement_cost']:.2f} €
+- Kies: {materials['gravel_tons']} t × {gravel_price:.2f} € = {costs['gravel_cost']:.2f} €
+---
+Zwischensumme (netto): {costs['subtotal']:.2f} €
+MwSt (19% auf Steine): {costs['stone_vat']:.2f} €
+GESAMTKOSTEN: {costs['total_cost']:.2f} €
 """
     
     export_text += f"""

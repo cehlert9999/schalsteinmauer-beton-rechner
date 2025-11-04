@@ -225,6 +225,42 @@ class TestCosts:
         assert costs['cement_cost'] == 75.0
         assert costs['gravel_cost'] == 90.0
         assert costs['total_cost'] == 165.0
+    
+    def test_with_stone_costs(self):
+        """Test Kostenberechnung mit Schalstein-Kosten"""
+        materials = {
+            'cement_bags': 12,
+            'gravel_tons': 1.5
+        }
+        
+        costs = calculate_costs(
+            materials=materials,
+            cement_price=5.0,
+            gravel_price=50.0,
+            stone_count=100,
+            stone_price=2.50
+        )
+        
+        # Schalsteine: 100 * 2.50 = 250 € (netto)
+        assert costs['stone_cost'] == 250.0
+        
+        # MwSt: 250 * 0.19 = 47.50 €
+        assert costs['stone_vat'] == 47.50
+        
+        # Schalsteine inkl. MwSt: 297.50 €
+        assert costs['stone_cost_with_vat'] == 297.50
+        
+        # Zement: 12 * 5 = 60 €
+        assert costs['cement_cost'] == 60.0
+        
+        # Kies: 1.5 * 50 = 75 €
+        assert costs['gravel_cost'] == 75.0
+        
+        # Netto-Summe: 250 + 60 + 75 = 385 €
+        assert costs['subtotal'] == 385.0
+        
+        # Gesamt: 60 + 75 + 297.50 = 432.50 €
+        assert costs['total_cost'] == 432.50
 
 
 class TestValidation:

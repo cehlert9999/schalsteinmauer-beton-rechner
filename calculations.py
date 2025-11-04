@@ -214,7 +214,13 @@ def calculate_materials(volume_m3: float) -> Dict[str, float]:
     }
 
 
-def calculate_costs(materials: Dict[str, float], cement_price: float, gravel_price: float) -> Dict[str, float]:
+def calculate_costs(
+    materials: Dict[str, float], 
+    cement_price: float, 
+    gravel_price: float,
+    stone_count: int = 0,
+    stone_price: float = 0.0
+) -> Dict[str, float]:
     """
     Berechnet die Materialkosten
     
@@ -222,17 +228,33 @@ def calculate_costs(materials: Dict[str, float], cement_price: float, gravel_pri
         materials: Dictionary mit Materialmengen
         cement_price: Preis pro Zementsack in €
         gravel_price: Preis pro Tonne Kies in €
+        stone_count: Anzahl Schalsteine
+        stone_price: Preis pro Schalstein in €
         
     Returns:
         Dictionary mit Kosten
     """
     cement_cost = materials['cement_bags'] * cement_price
     gravel_cost = materials['gravel_tons'] * gravel_price
-    total_cost = cement_cost + gravel_cost
+    stone_cost = stone_count * stone_price if stone_price > 0 else 0
+    
+    # Gesamt ohne MwSt
+    subtotal = cement_cost + gravel_cost + stone_cost
+    
+    # MwSt auf Schalsteine (19%)
+    stone_vat = stone_cost * 0.19 if stone_cost > 0 else 0
+    stone_cost_with_vat = stone_cost + stone_vat
+    
+    # Gesamtkosten mit MwSt auf Steine
+    total_cost = cement_cost + gravel_cost + stone_cost_with_vat
     
     return {
         'cement_cost': round(cement_cost, 2),
         'gravel_cost': round(gravel_cost, 2),
+        'stone_cost': round(stone_cost, 2),
+        'stone_cost_with_vat': round(stone_cost_with_vat, 2),
+        'stone_vat': round(stone_vat, 2),
+        'subtotal': round(subtotal, 2),
         'total_cost': round(total_cost, 2)
     }
 
@@ -389,6 +411,7 @@ def calculate_all(
     stone_type: str,
     cement_price: Optional[float] = None,
     gravel_price: Optional[float] = None,
+    stone_price: Optional[float] = None,
     is_two_zone: bool = False,
     zone1_length: Optional[float] = None,
     zone1_height: Optional[float] = None,
@@ -460,7 +483,13 @@ def calculate_all(
     # Kosten (falls Preise angegeben)
     costs = None
     if cement_price is not None and gravel_price is not None:
-        costs = calculate_costs(materials, cement_price, gravel_price)
+        costs = calculate_costs(
+            materials, 
+            cement_price, 
+            gravel_price,
+            stone_count=total_stones,
+            stone_price=stone_price if stone_price is not None else 0.0
+        )
     
     # Steininfo
     stone_data = config['stone_types'][stone_type]
